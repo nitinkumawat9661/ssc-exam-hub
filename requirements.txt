@@ -1,9 +1,9 @@
-Flask==3.0.0
+Flask==2.3.3
 Flask-SQLAlchemy==3.1.1
-requests
-Werkzeug==3.0.1
-gunicorn
-python-dateutil
-pytz
-markdown
+Werkzeug==2.3.7
+requests==2.31.0
+gunicorn==21.2.0
 psycopg2-binary==2.9.9
+python-dateutil==2.8.2
+pytz==2023.3.post1
+Markdown==3.4.4

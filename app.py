@@ -1,4 +1,5 @@
 import os
+import logging
 from datetime import datetime, timedelta
 import pytz
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session
@@ -10,13 +11,16 @@ import json
 import random
 import requests
 
+# --- LOGGING SETUP (To see errors in Vercel Logs) ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 
 # --- CONFIGURATION ---
-app.config['SECRET_KEY'] = 'ssc_hub_vercel_final_v300'
+app.config['SECRET_KEY'] = 'ssc_hub_vercel_final_v500'
 
-# 🔥 CRITICAL DATABASE FIX FOR VERCEL 🔥
-# Vercel gives 'postgres://', but SQLAlchemy requires 'postgresql://'
+# 🔥 DATABASE FIX 🔥
 raw_db_url = os.environ.get('POSTGRES_URL') 
 if raw_db_url:
     if raw_db_url.startswith("postgres://"):
@@ -24,14 +28,11 @@ if raw_db_url:
     else:
         app.config['SQLALCHEMY_DATABASE_URI'] = raw_db_url
 else:
-    # Local Fallback
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ssc_hub.db'
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = '/tmp' 
 app.config['PROFILE_PICS'] = 'static/profile_pics' 
-
-# Security Headers
 app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
@@ -103,7 +104,7 @@ def get_smart_daily_dose():
         if settings.today_date_str == today_str and settings.today_dose_content:
             return settings.today_dose_content
 
-        prompt = f"Generate a unique 'Daily Dose' for SSC Aspirants for {today_str}. 3 points: English Vocab, Math Trick, GK Fact. Use HTML <b> tags."
+        prompt = f"Generate a unique 'Daily Dose' for SSC CGL Aspirants for {today_str}. 3 points: English Vocab, Math Trick, GK Fact. Use HTML <b> tags."
         headers = {"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json", "HTTP-Referer": "https://sscexamhub.onrender.com"}
         data = {"model": "meta-llama/llama-3-8b-instruct:free", "messages": [{"role": "user", "content": prompt}]}
         resp = requests.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers)
@@ -119,8 +120,11 @@ def get_smart_daily_dose():
 # --- ROUTES ---
 @app.route('/')
 def index():
-    if 'user_id' in session: return redirect(url_for('dashboard'))
-    return render_template('login.html')
+    try:
+        if 'user_id' in session: return redirect(url_for('dashboard'))
+        return render_template('login.html')
+    except Exception as e:
+        return f"<h3>Error: {str(e)}</h3>"
 
 @app.route('/firebase_login', methods=['POST'])
 def firebase_login():
@@ -138,39 +142,46 @@ def firebase_login():
         session['user_id'] = uid
         return jsonify({'status': 'success'})
     except Exception as e:
+        logger.error(f"Login Error: {e}")
         return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/dashboard')
 def dashboard():
-    if 'user_id' not in session: return redirect(url_for('index'))
-    user = User.query.get(session['user_id'])
-    if not user: session.pop('user_id', None); return redirect(url_for('index'))
-    
-    today = datetime.now(IST).strftime("%Y-%m-%d")
-    if user.last_login != today:
-        yesterday = (datetime.now(IST) - timedelta(days=1)).strftime("%Y-%m-%d")
-        if user.last_login == yesterday: user.streak += 1
-        elif user.last_login != today: user.streak = 1
-        user.last_login = today
-        db.session.commit()
+    try:
+        if 'user_id' not in session: return redirect(url_for('index'))
+        user = User.query.get(session['user_id'])
+        if not user: session.pop('user_id', None); return redirect(url_for('index'))
+        
+        today = datetime.now(IST).strftime("%Y-%m-%d")
+        if user.last_login != today:
+            yesterday = (datetime.now(IST) - timedelta(days=1)).strftime("%Y-%m-%d")
+            if user.last_login == yesterday: user.streak += 1
+            elif user.last_login != today: user.streak = 1
+            user.last_login = today
+            db.session.commit()
 
-    settings = AppSettings.query.first()
-    if not settings: settings = AppSettings(); db.session.add(settings); db.session.commit()
-    
-    img_url = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+        settings = AppSettings.query.first()
+        if not settings: settings = AppSettings(); db.session.add(settings); db.session.commit()
+        
+        img_url = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
 
-    return render_template('dashboard.html', user=user, settings=settings, profile_pic=img_url, daily_fact=get_smart_daily_dose())
+        return render_template('dashboard.html', user=user, settings=settings, profile_pic=img_url, daily_fact=get_smart_daily_dose())
+    except Exception as e:
+        return f"<h3>Dashboard Error: {str(e)}</h3>"
 
 @app.route('/watch_ad', methods=['POST'])
 def watch_ad():
-    if 'user_id' not in session: return jsonify({})
-    user = User.query.get(session['user_id'])
-    settings = AppSettings.query.first()
-    if settings.ads_enabled:
-        user.coins += settings.ad_reward
-        db.session.commit()
-        return jsonify({'msg': f'Earned {settings.ad_reward} Coins!'})
-    return jsonify({'msg': 'Ads disabled.'})
+    try:
+        if 'user_id' not in session: return jsonify({})
+        user = User.query.get(session['user_id'])
+        settings = AppSettings.query.first()
+        if settings.ads_enabled:
+            user.coins += settings.ad_reward
+            db.session.commit()
+            return jsonify({'msg': f'Earned {settings.ad_reward} Coins!'})
+        return jsonify({'msg': 'Ads disabled.'})
+    except Exception as e:
+        return jsonify({'msg': str(e)})
 
 @app.route('/submit_payment', methods=['POST'])
 def submit_payment():
@@ -265,14 +276,19 @@ def logout():
     session.pop('user_id', None)
     return redirect(url_for('index'))
 
-# 🔥 ERROR PROOF DB CREATION 🔥
+# 🔥 ERROR HANDLER TO SHOW WHAT'S WRONG 🔥
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Server Error: {error}")
+    return f"500 Error: {str(error)}", 500
+
+# Database Creation
 with app.app_context():
     try:
-        # This will create tables only if they don't exist
         db.create_all()
-        print("✅ Database Tables Checked/Created!")
+        print("✅ Tables Created Successfully")
     except Exception as e:
-        print(f"⚠️ Database Warning: {e}")
+        print(f"⚠️ DB Error: {e}")
 
 if __name__ == '__main__':
     app.run()
