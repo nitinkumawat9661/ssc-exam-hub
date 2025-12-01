@@ -1,25 +1,80 @@
 <!DOCTYPE html>
 <html>
-<head><title>Admin</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></head>
-<body class="p-4 bg-light">
-    <h2>⚙️ Admin Panel</h2>
-    <div class="card p-3 mb-3 shadow-sm">
-        <h4>Upload Paper</h4>
-        <form method="POST" enctype="multipart/form-data">
-            <input type="text" name="paper_title" class="form-control mb-2" placeholder="Paper Title" required>
-            <input type="number" name="price" class="form-control mb-2" placeholder="Price (Coins)" value="50">
-            <input type="file" name="file" class="form-control mb-2" required>
-            <button type="submit" class="btn btn-success">Upload Paper</button>
-        </form>
+<head>
+    <title>Admin Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light p-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">⚙️ Admin Control</h3>
+        <a href="/dashboard" class="btn btn-secondary btn-sm">Back</a>
     </div>
-    <div class="card p-3 shadow-sm">
-        <h4>Add Flashcard</h4>
-        <form method="POST">
-            <input type="text" name="fc_q" class="form-control mb-2" placeholder="Question" required>
-            <input type="text" name="fc_a" class="form-control mb-2" placeholder="Answer" required>
-            <button type="submit" class="btn btn-primary">Add Flashcard</button>
-        </form>
+
+    <div class="row g-3">
+        <!-- 🛠️ APP SETTINGS (Manage UPI & Email) -->
+        <div class="col-md-6">
+            <div class="card shadow-sm p-3 h-100">
+                <h5 class="text-primary border-bottom pb-2">🔧 App Settings</h5>
+                <form method="POST">
+                    <input type="hidden" name="update_settings" value="true">
+                    
+                    <label class="small fw-bold">UPI ID (For Payments)</label>
+                    <input type="text" name="upi_id" value="{{ settings.upi_id }}" class="form-control mb-2" required>
+                    
+                    <label class="small fw-bold">UPI Name</label>
+                    <input type="text" name="upi_name" value="{{ settings.upi_name }}" class="form-control mb-2" required>
+                    
+                    <label class="small fw-bold">Admin Email (For Alerts)</label>
+                    <input type="email" name="admin_email" value="{{ settings.admin_email }}" class="form-control mb-2" required>
+
+                    <label class="small fw-bold">Notice Board Text</label>
+                    <input type="text" name="notice_text" value="{{ settings.notice_text }}" class="form-control mb-2">
+                    
+                    <button type="submit" class="btn btn-primary w-100 mt-2">Save Settings ✅</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 📄 UPLOAD PAPER -->
+        <div class="col-md-6">
+            <div class="card shadow-sm p-3 h-100">
+                <h5 class="text-success border-bottom pb-2">📄 Upload Material</h5>
+                <form method="POST" enctype="multipart/form-data">
+                    <input type="text" name="paper_title" class="form-control mb-2" placeholder="Title (e.g. History Notes)" required>
+                    <input type="number" name="price" class="form-control mb-2" placeholder="Price (Coins)" value="50">
+                    <input type="file" name="file" class="form-control mb-2" required>
+                    <button type="submit" class="btn btn-success w-100">Upload PDF 📤</button>
+                </form>
+            </div>
+        </div>
     </div>
-    <a href="/dashboard" class="btn btn-secondary mt-3">Back</a>
+
+    <!-- 💸 PENDING PAYMENTS -->
+    <div class="card shadow-sm mt-4 p-3">
+        <h5 class="text-warning">⏳ Pending Payments</h5>
+        {% if payments %}
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle mt-2">
+                <thead class="table-dark"><tr><th>User</th><th>Amount</th><th>UTR</th><th>Action</th></tr></thead>
+                <tbody>
+                    {% for pay in payments %}
+                    <tr>
+                        <td>{{ pay.user_name }}<br><small>{{ pay.user_id[:5] }}</small></td>
+                        <td class="fw-bold">₹{{ pay.amount }}</td>
+                        <td><small>{{ pay.utr }}</small></td>
+                        <td>
+                            <a href="/approve_payment/{{ pay.id }}" class="btn btn-success btn-sm">Approve</a>
+                            <a href="/reject_payment/{{ pay.id }}" class="btn btn-danger btn-sm">Reject</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted small">No pending requests.</p>
+        {% endif %}
+    </div>
 </body>
 </html>
