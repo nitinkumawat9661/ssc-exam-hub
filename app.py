@@ -13,32 +13,30 @@ import requests
 app = Flask(__name__)
 
 # --- CONFIGURATION ---
-app.config['SECRET_KEY'] = 'ssc_hub_vercel_final_v200'
+app.config['SECRET_KEY'] = 'ssc_hub_vercel_final_v300'
 
-# 🔥 SMART DATABASE CONFIG (Vercel Postgres vs Local SQLite) 🔥
-# Vercel automatically provides 'POSTGRES_URL'
-db_url = os.environ.get('POSTGRES_URL')
-if db_url:
-    # SQLAlchemy needs 'postgresql://', but Vercel gives 'postgres://'
-    app.config['SQLALCHEMY_DATABASE_URI'] = db_url.replace("postgres://", "postgresql://", 1)
+# 🔥 CRITICAL DATABASE FIX FOR VERCEL 🔥
+# Vercel gives 'postgres://', but SQLAlchemy requires 'postgresql://'
+raw_db_url = os.environ.get('POSTGRES_URL') 
+if raw_db_url:
+    if raw_db_url.startswith("postgres://"):
+        app.config['SQLALCHEMY_DATABASE_URI'] = raw_db_url.replace("postgres://", "postgresql://", 1)
+    else:
+        app.config['SQLALCHEMY_DATABASE_URI'] = raw_db_url
 else:
-    # Fallback for Local Testing
+    # Local Fallback
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ssc_hub.db'
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# Note: Vercel is Read-Only. We use /tmp for temporary uploads.
-# For permanent file storage on Vercel, you normally need Cloudinary/AWS S3.
-# For now, we use /tmp to prevent errors, but files may vanish on redeploy.
 app.config['UPLOAD_FOLDER'] = '/tmp' 
 app.config['PROFILE_PICS'] = 'static/profile_pics' 
 
-# Security
+# Security Headers
 app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
-# 🔥 YOUR CREDENTIALS 🔥
+# 🔥 CREDENTIALS 🔥
 ADMIN_EMAIL_DEFAULT = "nitinkumawat985@gmail.com"
 EMAIL_PASSWORD = "cuzr fhda ulkq swpc"
 AI_API_KEY = "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"
@@ -97,7 +95,6 @@ class Flashcard(db.Model):
 
 # --- HELPER ---
 def get_smart_daily_dose():
-    # Wrap in try-except to handle DB initialization issues seamlessly
     try:
         settings = AppSettings.query.first()
         if not settings: settings = AppSettings(); db.session.add(settings); db.session.commit()
@@ -106,7 +103,7 @@ def get_smart_daily_dose():
         if settings.today_date_str == today_str and settings.today_dose_content:
             return settings.today_dose_content
 
-        prompt = f"Generate a unique 'Daily Dose' for SSC CGL Aspirants for {today_str}. 3 points: English Vocab, Math Trick, GK Fact. Use HTML <b> tags."
+        prompt = f"Generate a unique 'Daily Dose' for SSC Aspirants for {today_str}. 3 points: English Vocab, Math Trick, GK Fact. Use HTML <b> tags."
         headers = {"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json", "HTTP-Referer": "https://sscexamhub.onrender.com"}
         data = {"model": "meta-llama/llama-3-8b-instruct:free", "messages": [{"role": "user", "content": prompt}]}
         resp = requests.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers)
@@ -117,7 +114,7 @@ def get_smart_daily_dose():
         db.session.commit()
         return new_content
     except:
-        return "<b>Tip:</b> Practice makes perfect."
+        return "<b>Tip:</b> Keep revising."
 
 # --- ROUTES ---
 @app.route('/')
@@ -133,7 +130,6 @@ def firebase_login():
         user = User.query.get(uid)
         if not user:
             new_user = User(id=uid, name=data.get('name', 'Student'), email=data.get('email'), phone=data.get('phone'), coins=100)
-            # HARDCODED ADMIN ACCESS
             if data.get('email') == "nitinkumawat985@gmail.com": 
                 new_user.is_admin = True
             db.session.add(new_user)
@@ -161,11 +157,7 @@ def dashboard():
     settings = AppSettings.query.first()
     if not settings: settings = AppSettings(); db.session.add(settings); db.session.commit()
     
-    # Profile Pic: Vercel doesn't store uploads permanently, show default or external URL
     img_url = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-    if user.image_file and user.image_file != 'default.png':
-        # In real production, this would be an S3 URL. For now, fallback to default.
-        pass 
 
     return render_template('dashboard.html', user=user, settings=settings, profile_pic=img_url, daily_fact=get_smart_daily_dose())
 
@@ -196,8 +188,8 @@ def submit_payment():
     
     try:
         target = settings.admin_email if settings.admin_email else ADMIN_EMAIL_DEFAULT
-        msg = MIMEText(f"Payment: Rs.{amount}
-User: {user.name}
+        msg = MIMEText(f"User: {user.name}
+Amount: Rs. {amount}
 UTR: {utr}")
         msg['Subject'] = f"💰 Payment: Rs. {amount}"
         msg['From'] = ADMIN_EMAIL_DEFAULT
@@ -213,8 +205,8 @@ UTR: {utr}")
 @app.route('/ask_ai', methods=['POST'])
 def ask_ai():
     question = request.form.get('question')
-    prompt = "You are 'SSC Guru'. Be concise. Math: Tricks. GK: Mnemonics."
-    headers = {"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json", "HTTP-Referer": "https://sscexamhub.vercel.app"}
+    prompt = "You are 'SSC Guru'. Concise. Math: Tricks. GK: Mnemonics."
+    headers = {"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json", "HTTP-Referer": "https://sscexamhub.onrender.com"}
     data = {"model": "meta-llama/llama-3-8b-instruct:free", "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": question}]}
     try: return jsonify({'answer': requests.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers).json()['choices'][0]['message']['content']})
     except: return jsonify({'answer': "Try again."})
@@ -236,8 +228,6 @@ def admin():
             settings.ad_reward = int(request.form.get('ad_reward'))
             db.session.commit()
         elif 'paper_title' in request.form:
-            # File Upload on Vercel is tricky. We save to DB meta, but file content won't persist without S3.
-            # Saving just the record for now.
             db.session.add(Paper(title=request.form['paper_title'], category="SSC", price=int(request.form['price']), filename="demo.pdf"))
             db.session.commit()
         elif 'fc_q' in request.form:
@@ -275,11 +265,14 @@ def logout():
     session.pop('user_id', None)
     return redirect(url_for('index'))
 
-# Vercel needs this hook to create DB tables on first run
+# 🔥 ERROR PROOF DB CREATION 🔥
 with app.app_context():
-    try: db.create_all()
-    except: pass
+    try:
+        # This will create tables only if they don't exist
+        db.create_all()
+        print("✅ Database Tables Checked/Created!")
+    except Exception as e:
+        print(f"⚠️ Database Warning: {e}")
 
-# Vercel Entry Point
 if __name__ == '__main__':
     app.run()
