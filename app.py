@@ -8,11 +8,18 @@ import json
 import random
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'ssc_super_secret_key_2025'
+
+# --- SECURITY & SESSION CONFIG (CRITICAL FIX) ---
+app.config['SECRET_KEY'] = 'ssc_super_secret_key_2025_nitin'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ssc_hub.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['PROFILE_PICS'] = 'static/profile_pics'
+
+# Render requires Secure Cookies for HTTPS
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
 API_KEY = "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"
 
@@ -30,8 +37,8 @@ class User(db.Model):
     last_login = db.Column(db.String(20))
     badges = db.Column(db.String(500), default="[]")
     papers_owned = db.Column(db.String(1000), default="[]")
-    dob = db.Column(db.String(20)) 
-    gender = db.Column(db.String(10)) 
+    dob = db.Column(db.String(20))
+    gender = db.Column(db.String(10))
     image_file = db.Column(db.String(100), default='default.png')
 
 class Paper(db.Model):
@@ -53,18 +60,16 @@ class AppSettings(db.Model):
     exam_date = db.Column(db.String(20), default="2025-12-31")
     notice_text = db.Column(db.String(200), default="Welcome to SSC Hub! Start Learning.")
 
-# --- HELPER FUNCTIONS ---
+# --- HELPERS ---
 def get_greeting(user):
     hour = datetime.now().hour
-    salutation = ""
+    salutation = user.name.split()[0] if user.name else "Student"
     if user.gender == "Male": salutation = "Sir"
     elif user.gender == "Female": salutation = "Ma'am"
-    else: salutation = user.name.split()[0] if user.name else "Student"
 
-    today_date = datetime.now().strftime("%m-%d")
-    if user.dob and user.dob.endswith(today_date):
-        return f"Happy Birthday, {salutation}! 🎂🎉"
-
+    today = datetime.now().strftime("%m-%d")
+    if user.dob and user.dob.endswith(today): return f"Happy Birthday, {salutation}! 🎂"
+    
     if hour < 12: return f"Good Morning, {salutation}! ☀️"
     elif hour < 18: return f"Good Afternoon, {salutation}! 🌤️"
     else: return f"Good Evening, {salutation}! 🌙"
@@ -73,10 +78,8 @@ def check_streak(user):
     today = datetime.now().strftime("%Y-%m-%d")
     if user.last_login != today:
         yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        if user.last_login == yesterday:
-            user.streak += 1
-        elif user.last_login != today:
-            user.streak = 1
+        if user.last_login == yesterday: user.streak += 1
+        elif user.last_login != today: user.streak = 1
         user.last_login = today
         db.session.commit()
 
@@ -88,50 +91,83 @@ def index():
 
 @app.route('/firebase_login', methods=['POST'])
 def firebase_login():
-    data = request.json
-    uid = data.get('uid')
-    user = User.query.get(uid)
-    if not user:
-        new_user = User(id=uid, name=data.get('name', 'Student'), email=data.get('email'), phone=data.get('phone'), coins=100)
-        if data.get('phone') == "+917665853321": new_user.is_admin = True
-        db.session.add(new_user)
-    session['user_id'] = uid
-    db.session.commit()
-    return jsonify({'status': 'success'})
+    try:
+        data = request.json
+        uid = data.get('uid')
+        user = User.query.get(uid)
+        
+        if not user:
+            # Create New User
+            new_user = User(
+                id=uid, 
+                name=data.get('name', 'Student'), 
+                email=data.get('email', ''), 
+                phone=data.get('phone', ''), 
+                coins=100
+            )
+            # Auto-Admin for your number
+            if data.get('phone') == "+917665853321": 
+                new_user.is_admin = True
+            
+            db.session.add(new_user)
+            db.session.commit()
+
+        # Set Session (FIXED)
+        session.permanent = True
+        session['user_id'] = uid
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print("Login Error:", e)
+        return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session: return redirect(url_for('index'))
     user = User.query.get(session['user_id'])
-    check_streak(user)
-    settings = AppSettings.query.first() or AppSettings()
-    if not settings.id: db.session.add(settings); db.session.commit()
     
+    # Handle if user deleted from DB but session exists
+    if not user: 
+        session.pop('user_id', None)
+        return redirect(url_for('index'))
+
+    check_streak(user)
+    settings = AppSettings.query.first()
+    if not settings:
+        settings = AppSettings()
+        db.session.add(settings)
+        db.session.commit()
+
     exam_dt = datetime.strptime(settings.exam_date, "%Y-%m-%d")
     days_left = (exam_dt - datetime.now()).days
-    img_url = url_for('static', filename='profile_pics/' + user.image_file) if user.image_file != 'default.png' else "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-    daily_fact = random.choice(["Article 21: Right to Life", "Capital of Aus: Canberra", "Speed of Light: 3x10^8 m/s"])
     
+    img_url = url_for('static', filename='profile_pics/' + user.image_file) if user.image_file != 'default.png' else "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+    daily_fact = random.choice(["Article 21: Right to Life", "Vitamins A, D, E, K are Fat Soluble", "Capital of Bhutan: Thimphu"])
+
     return render_template('dashboard.html', user=user, greeting=get_greeting(user), days_left=days_left, settings=settings, profile_pic=img_url, daily_fact=daily_fact)
 
 @app.route('/profile', methods=['GET', 'POST'])
 def profile():
     if 'user_id' not in session: return redirect(url_for('index'))
     user = User.query.get(session['user_id'])
+    
     if request.method == 'POST':
         user.name = request.form.get('name')
         user.dob = request.form.get('dob')
         user.gender = request.form.get('gender')
+        
         if 'profile_pic' in request.files:
             file = request.files['profile_pic']
             if file.filename != '':
                 filename = secure_filename(user.id + "_" + file.filename)
                 file.save(os.path.join(app.config['PROFILE_PICS'], filename))
                 user.image_file = filename
+        
         db.session.commit()
         return redirect(url_for('profile'))
+
     img_url = url_for('static', filename='profile_pics/' + user.image_file) if user.image_file != 'default.png' else "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-    return render_template('profile.html', user=user, badges=json.loads(user.badges), profile_pic=img_url)
+    badges = json.loads(user.badges)
+    return render_template('profile.html', user=user, badges=badges, profile_pic=img_url)
 
 @app.route('/library')
 def library():
@@ -145,11 +181,13 @@ def buy_paper(paper_id):
     user = User.query.get(session['user_id'])
     paper = Paper.query.get(paper_id)
     owned = json.loads(user.papers_owned)
+    
     if paper_id not in owned and user.coins >= paper.price:
         user.coins -= paper.price
         owned.append(paper_id)
         user.papers_owned = json.dumps(owned)
         db.session.commit()
+    
     return redirect(url_for('library'))
 
 @app.route('/flashcards')
@@ -161,20 +199,29 @@ def flashcards():
 def ask_ai():
     question = request.form.get('question')
     mode = request.form.get('mode')
-    prompt = "You are a helpful teacher."
-    if mode == "math": prompt = "Solve step-by-step with formulas."
-    elif mode == "gk": prompt = "Give facts and mnemonics."
     
-    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json", "HTTP-Referer": "https://ssc-hub.onrender.com"}
-    data = {"model": "meta-llama/llama-3-8b-instruct:free", "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": question}]}
-    try: return jsonify({'answer': requests.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers).json()['choices'][0]['message']['content']})
-    except: return jsonify({'answer': "Error. Try again."})
+    prompt = "You are a helpful teacher."
+    if mode == "math": prompt = "Solve step-by-step using formulas."
+    elif mode == "gk": prompt = "Provide facts and memory tricks."
+    elif mode == "english": prompt = "Explain grammar rules clearly."
+
+    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json", "HTTP-Referer": "https://sscexamhub.onrender.com"}
+    data = {
+        "model": "meta-llama/llama-3-8b-instruct:free",
+        "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": question}]
+    }
+    try:
+        resp = requests.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers)
+        return jsonify({'answer': resp.json()['choices'][0]['message']['content']})
+    except:
+        return jsonify({'answer': "AI is currently busy. Please try again."})
 
 @app.route('/watch_ad', methods=['POST'])
 def watch_ad():
     if 'user_id' not in session: return jsonify({})
     user = User.query.get(session['user_id'])
-    user.coins += 20
+    settings = AppSettings.query.first()
+    user.coins += settings.ad_reward
     db.session.commit()
     return jsonify({'new_balance': user.coins})
 
@@ -183,23 +230,27 @@ def admin():
     if 'user_id' not in session: return redirect(url_for('index'))
     user = User.query.get(session['user_id'])
     if not user.is_admin: return "Access Denied"
-    
+
     if request.method == 'POST':
         if 'paper_title' in request.form:
             file = request.files['file']
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            db.session.add(Paper(title=request.form['paper_title'], category="SSC", price=int(request.form['price']), filename=filename))
-            db.session.commit()
+            if file:
+                filename = secure_filename(file.filename)
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                db.session.add(Paper(title=request.form['paper_title'], category="SSC", price=int(request.form['price']), filename=filename))
+                db.session.commit()
         elif 'fc_q' in request.form:
             db.session.add(Flashcard(question=request.form['fc_q'], answer=request.form['fc_a'], category="General"))
             db.session.commit()
-            
+    
     return render_template('admin.html')
 
 @app.route('/logout')
-def logout(): session.pop('user_id', None); return redirect(url_for('index'))
+def logout():
+    session.pop('user_id', None)
+    return redirect(url_for('index'))
 
+# --- INIT ---
 with app.app_context():
     db.create_all()
     if not os.path.exists('uploads'): os.makedirs('uploads')
