@@ -4,3 +4,5 @@ requests
 Werkzeug
 gunicorn
 python-dateutil
+pytz
+markdown
