@@ -3,6 +3,8 @@
 <head>
     <title>Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Link Manifest -->
+    <link rel="manifest" href="/static/manifest.json">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
@@ -23,7 +25,14 @@
     </div>
 
     <div class="container">
-        <div class="card-float p-3 mb-4">
+        <!-- INSTALL APP BUTTON (Hidden by default) -->
+        <div id="installContainer" class="d-none mb-3 text-center" style="margin-top: -60px; position: relative; z-index: 10;">
+            <button onclick="installApp()" class="btn btn-light fw-bold shadow-sm text-primary px-4 rounded-pill">
+                📲 Install App
+            </button>
+        </div>
+
+        <div class="card-float p-3 mb-4" id="mainCard">
             <div class="d-flex justify-content-between align-items-center">
                 <div><h2 class="mb-0 text-warning fw-bold">💰 {{ user.coins }}</h2><small class="text-muted">Coins</small></div>
                 <button class="btn btn-success rounded-pill px-3 btn-sm" data-bs-toggle="modal" data-bs-target="#paymentModal">+ Buy</button>
@@ -50,7 +59,6 @@
             <div class="col-6"><a href="/library" class="btn btn-white bg-white w-100 py-3 shadow-sm text-primary border-0 fw-bold">📚 Library</a></div>
             <div class="col-6"><a href="/flashcards" class="btn btn-white bg-white w-100 py-3 shadow-sm text-danger border-0 fw-bold">📝 Flashcards</a></div>
             
-            <!-- 🔥 AD BUTTON (Visible only if Enabled) 🔥 -->
             {% if settings.ads_enabled %}
             <div class="col-12">
                 <button onclick="startAd()" class="btn btn-warning w-100 py-2 shadow-sm text-dark fw-bold border-0">
@@ -65,7 +73,7 @@
         </div>
     </div>
 
-    <!-- Ad Modal -->
+    <!-- Modals (Ad & Payment) remain same... -->
     <div class="modal fade" id="adModal" data-bs-backdrop="static">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content text-center p-4">
@@ -77,7 +85,6 @@
         </div>
     </div>
 
-    <!-- Payment Modal -->
     <div class="modal fade" id="paymentModal">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content text-center p-4">
@@ -94,6 +101,28 @@
     </div>
 
     <script>
+        // --- INSTALL APP LOGIC ---
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            // Show the button only if install is available
+            document.getElementById('installContainer').classList.remove('d-none');
+            document.getElementById('mainCard').style.marginTop = "10px"; // Adjust spacing
+        });
+
+        async function installApp() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    document.getElementById('installContainer').classList.add('d-none');
+                }
+                deferredPrompt = null;
+            }
+        }
+
+        // --- EXISTING LOGIC ---
         function askAI() {
             let q = document.getElementById('aiQ').value;
             if(!q) return;
@@ -103,7 +132,6 @@
             fetch('/ask_ai', {method: 'POST', body: fd}).then(r=>r.json()).then(d=>{box.innerHTML = marked.parse(d.answer);});
         }
 
-        // Ad Logic
         var adModal;
         function startAd() {
             adModal = new bootstrap.Modal(document.getElementById('adModal'));
