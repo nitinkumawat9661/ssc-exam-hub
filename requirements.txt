@@ -3,3 +3,4 @@ Flask-SQLAlchemy
 requests
 Werkzeug
 gunicorn
+python-dateutil

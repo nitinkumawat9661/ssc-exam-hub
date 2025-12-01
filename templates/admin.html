@@ -1,47 +1,25 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <title>Admin Panel</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light p-3">
-    <div class="container" style="max-width: 600px;">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2>⚙️ Admin Control</h2>
-            <a href="/dashboard" class="btn btn-secondary">Back to App</a>
-        </div>
-
-        <!-- Settings -->
-        <div class="card shadow-sm p-3 mb-4">
-            <h4>💰 Ad Reward Settings</h4>
-            <form method="POST">
-                <label class="form-label">Coins per Ad View:</label>
-                <div class="input-group">
-                    <input type="number" name="ad_rate" value="{{ settings.ad_reward }}" class="form-control">
-                    <button type="submit" class="btn btn-success">Update</button>
-                </div>
-            </form>
-        </div>
-
-        <!-- Upload -->
-        <div class="card shadow-sm p-3">
-            <h4>📤 Upload New Paper</h4>
-            <form method="POST" enctype="multipart/form-data">
-                <div class="mb-2">
-                    <label>Paper Title</label>
-                    <input type="text" name="paper_title" class="form-control" required>
-                </div>
-                <div class="mb-2">
-                    <label>Price (Coins)</label>
-                    <input type="number" name="price" value="50" class="form-control" required>
-                </div>
-                <div class="mb-3">
-                    <label>Select PDF File</label>
-                    <input type="file" name="file" class="form-control" required>
-                </div>
-                <button type="submit" class="btn btn-primary w-100">🚀 Upload Paper</button>
-            </form>
-        </div>
+<head><title>Admin</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></head>
+<body class="p-4 bg-light">
+    <h2>⚙️ Admin Panel</h2>
+    <div class="card p-3 mb-3 shadow-sm">
+        <h4>Upload Paper</h4>
+        <form method="POST" enctype="multipart/form-data">
+            <input type="text" name="paper_title" class="form-control mb-2" placeholder="Paper Title" required>
+            <input type="number" name="price" class="form-control mb-2" placeholder="Price (Coins)" value="50">
+            <input type="file" name="file" class="form-control mb-2" required>
+            <button type="submit" class="btn btn-success">Upload Paper</button>
+        </form>
     </div>
+    <div class="card p-3 shadow-sm">
+        <h4>Add Flashcard</h4>
+        <form method="POST">
+            <input type="text" name="fc_q" class="form-control mb-2" placeholder="Question" required>
+            <input type="text" name="fc_a" class="form-control mb-2" placeholder="Answer" required>
+            <button type="submit" class="btn btn-primary">Add Flashcard</button>
+        </form>
+    </div>
+    <a href="/dashboard" class="btn btn-secondary mt-3">Back</a>
 </body>
 </html>

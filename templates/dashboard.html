@@ -1,109 +1,98 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" data-bs-theme="light">
 <head>
-    <title>Dashboard</title>
+    <title>SSC Hub Ultimate</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .coin-badge { background: #ffc107; color: #000; padding: 5px 12px; border-radius: 20px; font-weight: bold; }
-        .ai-box { background: linear-gradient(45deg, #28a745, #20c997); color: white; padding: 15px; border-radius: 10px; cursor: pointer; }
-        .float-btn { position: fixed; bottom: 20px; right: 20px; font-size: 24px; z-index: 100; }
+        .gradient-header { background: linear-gradient(135deg, #0061ff 0%, #60efff 100%); color: white; border-radius: 0 0 25px 25px; padding: 20px; padding-bottom: 50px; }
+        .stat-card { background: white; border-radius: 15px; padding: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); margin-top: -40px; text-align: center; position: relative; z-index: 10; }
+        .feature-btn { border-radius: 15px; height: 100px; display: flex; flex-direction: column; justify-content: center; align-items: center; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.1); transition: transform 0.2s; }
+        .feature-btn:active { transform: scale(0.95); }
+        .dark-mode { filter: invert(1) hue-rotate(180deg); }
+        .dark-mode img { filter: invert(1) hue-rotate(180deg); } 
     </style>
 </head>
 <body class="bg-light">
 
-    <!-- Navbar -->
-    <nav class="navbar navbar-dark bg-primary px-3 shadow-sm">
-        <a class="navbar-brand fw-bold" href="#">SSC Hub</a>
-        <div class="d-flex align-items-center">
-            <span class="coin-badge me-2">🪙 <span id="coin-display">{{ user.coins }}</span></span>
-            {% if user.is_admin %}
-                <a href="/admin" class="btn btn-warning btn-sm fw-bold">Admin Panel</a>
-            {% endif %}
-            <a href="/logout" class="btn btn-outline-light btn-sm ms-2">Logout</a>
-        </div>
-    </nav>
-
-    <div class="container mt-3">
-        <!-- Welcome -->
-        <h4 class="text-dark">Hi, {{ user.name }} 👋</h4>
-        
-        <!-- Watch Ad -->
-        <div class="card mb-3 border-warning shadow-sm">
-            <div class="card-body text-center bg-white rounded">
-                <h5 class="card-title">Need Coins? 💰</h5>
-                <p class="text-muted small mb-2">Watch a short ad to get free coins.</p>
-                <button onclick="watchAd()" class="btn btn-warning w-100 fw-bold">
-                    📺 Watch Ad (+{{ ad_reward }})
-                </button>
+    <!-- Header -->
+    <div class="gradient-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-0 fw-bold">{{ greeting }}</h5>
+                <small class="text-white-50">by Nitin Kumawat 🚀</small>
+            </div>
+            <div class="d-flex align-items-center">
+                <span class="badge bg-warning text-dark rounded-pill fs-6 me-2">💰 <span id="coin-display">{{ user.coins }}</span></span>
+                <a href="/profile">
+                    <img src="{{ profile_pic }}" width="40" height="40" class="rounded-circle border border-2 border-white">
+                </a>
             </div>
         </div>
-
-        <!-- AI Doubt Solver -->
-        <div class="ai-box mb-4 shadow-sm" onclick="askAI()">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h5 class="mb-0">🤖 AI Teacher</h5>
-                    <small>Tap to ask doubt (Maths, GK, English)</small>
-                </div>
-                <span style="font-size: 24px;">💡</span>
-            </div>
-        </div>
-
-        <!-- Papers Section -->
-        <h5 class="mb-3 border-bottom pb-2">📚 Latest Exam Papers</h5>
-        <div class="row">
-            {% for paper in papers %}
-            <div class="col-6 col-md-4 mb-3">
-                <div class="card h-100 shadow-sm">
-                    <div class="card-body p-3 text-center">
-                        <div class="badge bg-info mb-2">{{ paper.category }}</div>
-                        <h6 class="card-title mb-1 text-truncate">{{ paper.title }}</h6>
-                        <p class="text-danger fw-bold small">{{ paper.price }} Coins</p>
-                        <button class="btn btn-primary btn-sm w-100">Unlock PDF 🔓</button>
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
+        <div class="mt-3 text-center bg-white bg-opacity-25 p-2 rounded">
+            <small class="text-uppercase fw-bold">SSC Exam Countdown</small>
+            <h2 class="mb-0 fw-bold">{{ days_left }} Days Left ⏳</h2>
         </div>
     </div>
 
-    <!-- WhatsApp Support -->
-    <a href="https://wa.me/917665853321" class="btn btn-success rounded-circle p-3 float-btn shadow">
-        💬
-    </a>
+    <div class="container">
+        <!-- Daily Dose -->
+        <div class="stat-card mb-4">
+            <h6 class="text-primary fw-bold">🧠 Daily Dose</h6>
+            <p class="mb-0 small text-muted">"{{ daily_fact }}"</p>
+            <div class="mt-2">
+                <span class="badge bg-danger">🔥 Streak: {{ user.streak }} Days</span>
+            </div>
+        </div>
 
-    <!-- Scripts -->
+        <!-- AI Section -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-body bg-white rounded">
+                <h5 class="fw-bold mb-3">🤖 Smart Coach</h5>
+                <select id="aiMode" class="form-select mb-2">
+                    <option value="general">General Help</option>
+                    <option value="math">🧮 Maths Expert</option>
+                    <option value="gk">🌍 GK & Tricks</option>
+                </select>
+                <div class="input-group">
+                    <input type="text" id="aiQ" class="form-control" placeholder="Ask doubt...">
+                    <button onclick="askAI()" class="btn btn-primary">Ask</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Menu Grid -->
+        <div class="row g-3 mb-4">
+            <div class="col-6"><a href="/library" class="btn btn-white w-100 feature-btn bg-white text-primary"><span class="fs-1">📚</span><span>Library</span></a></div>
+            <div class="col-6"><a href="/flashcards" class="btn btn-white w-100 feature-btn bg-white text-danger"><span class="fs-1">📝</span><span>Flashcards</span></a></div>
+            <div class="col-6"><button onclick="watchAd()" class="btn btn-white w-100 feature-btn bg-warning text-dark"><span class="fs-1">📺</span><span>Earn Coins</span></button></div>
+            <div class="col-6"><button onclick="document.documentElement.classList.toggle('dark-mode')" class="btn btn-white w-100 feature-btn bg-dark text-white"><span class="fs-1">🌑</span><span>Dark Mode</span></button></div>
+            {% if user.is_admin %}
+            <div class="col-12"><a href="/admin" class="btn btn-danger w-100 fw-bold">⚙️ Admin Panel</a></div>
+            {% endif %}
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center py-4 mt-3 border-top">
+            <small class="text-muted">Made with ❤️ by <strong>Nitin Kumawat</strong></small><br>
+            <small class="text-muted">© 2025 SSC Exam Hub.</small>
+        </div>
+    </div>
+
     <script>
-        function watchAd() {
-            // Simulate Ad
-            alert("Playing Video Ad... Please wait 3 seconds.");
-            setTimeout(() => {
-                fetch('/watch_ad', {method: 'POST'})
-                .then(res => res.json())
-                .then(data => {
-                    alert(data.msg);
-                    if(data.success) document.getElementById('coin-display').innerText = data.new_balance;
-                });
-            }, 3000);
-        }
-
         function askAI() {
-            let q = prompt("Ask your question here:");
+            let q = document.getElementById('aiQ').value;
+            let m = document.getElementById('aiMode').value;
             if(!q) return;
-            
-            alert("🤖 AI is thinking... (This may take 2-3 seconds)");
-            
-            let fd = new FormData();
-            fd.append('question', q);
-            
-            fetch('/ask_ai', {method: 'POST', body: fd})
-            .then(res => res.json())
-            .then(data => {
-                alert("💡 ANSWER:
+            let btn = document.querySelector('.btn-primary'); btn.innerText = "Thinking...";
+            let fd = new FormData(); fd.append('question', q); fd.append('mode', m);
+            fetch('/ask_ai', {method: 'POST', body: fd}).then(r=>r.json()).then(d=>{alert("💡 ANSWER:
 
-" + data.answer);
-            });
+" + d.answer); btn.innerText = "Ask";});
+        }
+        function watchAd() {
+            alert("Playing Ad... 🎬");
+            setTimeout(() => { fetch('/watch_ad', {method: 'POST'}).then(r=>r.json()).then(d=>{document.getElementById('coin-display').innerText = d.new_balance; alert("Coins Added! 💰");}); }, 2000);
         }
     </script>
 </body>
