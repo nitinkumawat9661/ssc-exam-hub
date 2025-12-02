@@ -3,67 +3,56 @@
 <head>
     <title>Login - SSC Hub</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Firebase SDK (Version 9 Compat) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Firebase Scripts -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <style>
-        body { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-            height: 100vh; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-        }
-        .login-box { 
-            background: white; 
-            padding: 30px; 
-            border-radius: 15px; 
-            width: 90%; 
-            max-width: 400px; 
-            text-align: center; 
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2); 
-        }
-        .btn-google { background: #db4437; color: white; font-weight: bold; }
-        .btn-phone { background: #28a745; color: white; font-weight: bold; }
-        #status { font-size: 14px; margin-top: 10px; }
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        .login-box { background: white; padding: 30px; border-radius: 15px; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); z-index: 10; }
+        .btn-google { background: white; color: #333; font-weight: bold; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .divider { display: flex; align-items: center; margin: 20px 0; font-size: 12px; color: #888; }
+        .divider::before, .divider::after { content: ""; flex: 1; border-bottom: 1px solid #ddd; margin: 0 10px; }
+        
+        /* WhatsApp Float Button */
+        .wa-float { position: fixed; bottom: 20px; right: 20px; background-color: #25d366; color: white; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 2px 2px 10px rgba(0,0,0,0.2); z-index: 100; text-decoration: none; }
+        .wa-float:hover { background-color: #1ebe57; color: white; }
+
+        /* Footer Credit */
+        .footer-credit { position: fixed; bottom: 10px; width: 100%; text-align: center; color: rgba(255, 255, 255, 0.7); font-size: 12px; z-index: 5; }
     </style>
 </head>
 <body>
-
     <div class="login-box">
-        <h3 class="mb-2 fw-bold text-primary">SSC Exam Hub 🚀</h3>
-        <p class="mb-4 small text-muted">Powered by <strong class="text-dark">Nitin Kumawat</strong></p>
-        
-        <!-- Status Message Area -->
+        <h3 class="fw-bold text-primary mb-4">SSC Exam Hub 🚀</h3>
         <div id="error-box" class="alert alert-danger d-none small"></div>
 
-        <!-- Google Login -->
-        <button onclick="googleLogin()" class="btn btn-google w-100 mb-3 shadow-sm">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" class="me-2 bg-white rounded-circle p-1">
-            Sign in with Google
+        <!-- ✅ GOOGLE LOGIN -->
+        <button onclick="googleLogin()" class="btn btn-google w-100 py-2 mb-3 shadow-sm">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20"> Sign in with Google
         </button>
+
+        <div class="divider">OR USE EMAIL</div>
+
+        <!-- ✅ EMAIL LOGIN (Admin Access) -->
+        <input type="email" id="email" class="form-control mb-2" placeholder="Email (e.g. nitin@gmail.com)">
+        <input type="password" id="password" class="form-control mb-3" placeholder="Password">
+        <button onclick="emailLogin()" class="btn btn-primary w-100 fw-bold">Login / Sign Up</button>
         
-        <div class="d-flex align-items-center mb-3">
-            <hr class="flex-grow-1"> <span class="mx-2 text-muted small">OR</span> <hr class="flex-grow-1">
-        </div>
-        
-        <!-- Phone Login -->
-        <div id="recaptcha-container"></div>
-        <div class="input-group mb-3">
-            <span class="input-group-text bg-light">+91</span>
-            <input type="tel" id="phone" class="form-control" placeholder="Mobile Number">
-        </div>
-        <button onclick="phoneLogin()" class="btn btn-phone w-100 shadow-sm">
-            Login with OTP
-        </button>
-        
-        <p id="status" class="fw-bold text-secondary"></p>
+        <p id="status" class="text-muted small mt-3"></p>
     </div>
 
+    <!-- Footer Name -->
+    <div class="footer-credit">Designed & Developed by <b>Nitin Kumawat</b> ❤️</div>
+
+    <!-- WhatsApp Help Button -->
+    <a href="https://wa.me/917665853321?text=Hello%20Sir,%20I%20need%20help%20with%20SSC%20Hub%20App" class="wa-float" target="_blank">
+        <i class="fab fa-whatsapp"></i>
+    </a>
+
     <script>
-        // 🔥 YOUR FIREBASE CONFIG (Make sure this is FRESH from console)
+        // Firebase Config
         const firebaseConfig = {
             apiKey: "AIzaSyD0hwAADeX16Y_0WeOewn-WK9NMMFaGhE4",
             authDomain: "nitin-first-app.firebaseapp.com",
@@ -72,110 +61,61 @@
             messagingSenderId: "435472439420",
             appId: "1:435472439420:web:4da5fe290ab0422608d1f9"
         };
+        firebase.initializeApp(firebaseConfig);
 
-        // Initialize Firebase
-        try {
-            firebase.initializeApp(firebaseConfig);
-            console.log("Firebase Initialized ✅");
-        } catch (e) {
-            showError("Firebase Config Error: " + e.message);
+        function googleLogin() {
+            var provider = new firebase.auth.GoogleAuthProvider();
+            firebase.auth().signInWithPopup(provider)
+                .then((result) => handleAuth(result.user))
+                .catch((error) => showError(error.message));
         }
 
-        // Show Error Function
+        function emailLogin() {
+            let email = document.getElementById('email').value;
+            let pass = document.getElementById('password').value;
+            
+            if(!email || !pass) return showError("Please enter Email and Password");
+            document.getElementById('status').innerText = "Checking...";
+            
+            firebase.auth().signInWithEmailAndPassword(email, pass)
+            .then((result) => handleAuth(result.user))
+            .catch((error) => {
+                if(error.code === 'auth/user-not-found') {
+                    if(confirm("Account nahi mila. Kya naya bana dun?")) {
+                        firebase.auth().createUserWithEmailAndPassword(email, pass)
+                        .then((result) => handleAuth(result.user))
+                        .catch((e) => showError(e.message));
+                    }
+                } else {
+                    showError(error.message);
+                }
+            });
+        }
+
+        function handleAuth(user) {
+            document.getElementById('status').innerText = "Login Success! Redirecting...";
+            fetch('/firebase_login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ 
+                    uid: user.uid, 
+                    email: user.email, 
+                    name: user.displayName || user.email.split('@')[0] 
+                })
+            }).then(r => r.json()).then(data => {
+                if(data.status === 'success') {
+                    window.location.href = "/dashboard";
+                } else {
+                    showError(data.message);
+                }
+            });
+        }
+
         function showError(msg) {
             let box = document.getElementById('error-box');
             box.innerText = "⚠️ " + msg;
             box.classList.remove('d-none');
             document.getElementById('status').innerText = "";
-        }
-
-        // 1. Google Login
-        function googleLogin() {
-            document.getElementById('status').innerText = "Connecting to Google...";
-            var provider = new firebase.auth.GoogleAuthProvider();
-            
-            firebase.auth().signInWithPopup(provider)
-            .then((result) => {
-                handleAuth(result.user);
-            })
-            .catch((error) => {
-                console.error(error);
-                showError(error.message); // This will show why it failed!
-            });
-        }
-
-        // 2. Phone Login
-        function phoneLogin() {
-            var phone = document.getElementById('phone').value;
-            if(phone.length < 10) {
-                showError("Please enter a valid 10-digit number.");
-                return;
-            }
-            
-            document.getElementById('status').innerText = "Verifying Captcha...";
-            
-            if(!window.recaptchaVerifier) {
-                window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-                    'size': 'invisible',
-                    'callback': (response) => {
-                        // reCAPTCHA solved
-                    }
-                });
-            }
-
-            const phoneNumber = "+91" + phone;
-            const appVerifier = window.recaptchaVerifier;
-
-            firebase.auth().signInWithPhoneNumber(phoneNumber, appVerifier)
-            .then((confirmationResult) => {
-                document.getElementById('status').innerText = "OTP Sent!";
-                window.confirmationResult = confirmationResult;
-                
-                let code = prompt("Enter the 6-digit OTP sent to " + phoneNumber);
-                if (code) {
-                    confirmationResult.confirm(code).then((result) => {
-                        handleAuth(result.user);
-                    }).catch((error) => {
-                        showError("Invalid OTP. Try again.");
-                    });
-                }
-            }).catch((error) => {
-                console.error(error);
-                showError(error.message);
-                
-                // If captcha fails, reset it
-                if(window.recaptchaVerifier) {
-                    window.recaptchaVerifier.render().then(function(widgetId) {
-                        grecaptcha.reset(widgetId);
-                    });
-                }
-            });
-        }
-
-        // 3. Send Data to Backend
-        function handleAuth(user) {
-            document.getElementById('status').innerText = "Success! Logging in...";
-            document.getElementById('status').style.color = "green";
-            document.getElementById('error-box').classList.add('d-none');
-
-            fetch('/firebase_login', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    uid: user.uid,
-                    email: user.email,
-                    phone: user.phoneNumber,
-                    name: user.displayName || "Student"
-                })
-            }).then(response => response.json())
-            .then(data => {
-                if(data.status === 'success') {
-                    window.location.href = "/dashboard";
-                } else {
-                    showError("Backend Login Failed");
-                }
-            })
-            .catch(err => showError("Server Error: " + err));
         }
     </script>
 </body>
