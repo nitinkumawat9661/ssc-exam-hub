@@ -11,28 +11,37 @@ import json
 import random
 import requests
 
-# --- LOGGING ---
+# --- LOGGING SETUP ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# --- CONFIG ---
-app.config['SECRET_KEY'] = 'ssc_hub_testing_key'
+# --- CONFIGURATION ---
+app.config['SECRET_KEY'] = 'ssc_hub_production_v5'
 
-# 🔥 TEMPORARY TESTING DATABASE (IN-MEMORY) 🔥
-# This will run the site without needing Postgres to check for other errors.
-# Note: Data will be lost on every refresh, this is for testing only.
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+# 🔥 DATABASE CONNECTION 🔥
+# This ensures we use Vercel's real database, NOT memory.
+raw_db_url = os.environ.get('POSTGRES_URL')
+
+if raw_db_url:
+    if raw_db_url.startswith("postgres://"):
+        app.config['SQLALCHEMY_DATABASE_URI'] = raw_db_url.replace("postgres://", "postgresql://", 1)
+    else:
+        app.config['SQLALCHEMY_DATABASE_URI'] = raw_db_url
+else:
+    # If DB is missing, we log an error but try to run (will fail saving data)
+    logger.error("⚠️ CRITICAL: POSTGRES_URL not found!")
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = '/tmp'
-app.config['PROFILE_PICS'] = 'static/profile_pics'
+app.config['UPLOAD_FOLDER'] = '/tmp' 
+app.config['PROFILE_PICS'] = 'static/profile_pics' 
 app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
-# 🔥 CREDENTIALS 🔥
+# --- CREDENTIALS ---
 ADMIN_EMAIL_DEFAULT = "nitinkumawat985@gmail.com"
 EMAIL_PASSWORD = "cuzr fhda ulkq swpc"
 AI_API_KEY = "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"
@@ -89,18 +98,46 @@ class Flashcard(db.Model):
     answer = db.Column(db.String(200))
     category = db.Column(db.String(50))
 
-# --- HELPER ---
+# --- HELPER: REAL DAILY DOSE (AI) ---
 def get_smart_daily_dose():
-    return "<b>💡 Test Dose:</b> Site is in Test Mode."
+    try:
+        # Safely get settings
+        try:
+            settings = AppSettings.query.first()
+            if not settings: 
+                settings = AppSettings()
+                db.session.add(settings)
+                db.session.commit()
+        except:
+            return "<b>Welcome!</b> Loading daily facts..."
+
+        today_str = datetime.now(IST).strftime("%Y-%m-%d")
+        if settings.today_date_str == today_str and settings.today_dose_content:
+            return settings.today_dose_content
+
+        # Call AI
+        prompt = f"Generate a unique 'Daily Dose' for SSC CGL Aspirants for {today_str}. 3 points: English Vocab, Math Trick, GK Fact. Use HTML <b> tags."
+        headers = {"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json", "HTTP-Referer": "https://sscexamhub.onrender.com"}
+        data = {"model": "meta-llama/llama-3-8b-instruct:free", "messages": [{"role": "user", "content": prompt}]}
+        
+        resp = requests.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers, timeout=10)
+        
+        if resp.status_code == 200:
+            new_content = resp.json()['choices'][0]['message']['content']
+            settings.today_date_str = today_str
+            settings.today_dose_content = new_content
+            db.session.commit()
+            return new_content
+        return "<b>Tip:</b> Revision is the key to success."
+    except Exception as e:
+        logger.error(f"Daily Dose Error: {e}")
+        return "<b>Tip:</b> Keep working hard!"
 
 # --- ROUTES ---
 @app.route('/')
 def index():
-    try:
-        if 'user_id' in session: return redirect(url_for('dashboard'))
-        return render_template('login.html')
-    except Exception as e:
-        return f"<h3>Index Error: {str(e)}</h3>"
+    if 'user_id' in session: return redirect(url_for('dashboard'))
+    return render_template('login.html')
 
 @app.route('/firebase_login', methods=['POST'])
 def firebase_login():
@@ -109,8 +146,10 @@ def firebase_login():
         uid = data.get('uid')
         user = User.query.get(uid)
         if not user:
-            new_user = User(id=uid, name=data.get('name', 'Student'), email=data.get('email'), phone=data.get('phone'))
-            if data.get('email') == "nitinkumawat985@gmail.com": new_user.is_admin = True
+            new_user = User(id=uid, name=data.get('name', 'Student'), email=data.get('email'), phone=data.get('phone', ''))
+            # 🔥 AUTO ADMIN FOR YOUR EMAIL 🔥
+            if data.get('email') == ADMIN_EMAIL_DEFAULT: 
+                new_user.is_admin = True
             db.session.add(new_user)
             db.session.commit()
         session.permanent = True
@@ -122,44 +161,185 @@ def firebase_login():
 
 @app.route('/dashboard')
 def dashboard():
-    try:
-        if 'user_id' not in session: return redirect(url_for('index'))
-        user = User.query.get(session['user_id'])
-        if not user: session.pop('user_id', None); return redirect(url_for('index'))
+    if 'user_id' not in session: return redirect(url_for('index'))
+    user = User.query.get(session['user_id'])
+    if not user: session.pop('user_id', None); return redirect(url_for('index'))
+    
+    # Streak Logic
+    today = datetime.now(IST).strftime("%Y-%m-%d")
+    if user.last_login != today:
+        yesterday = (datetime.now(IST) - timedelta(days=1)).strftime("%Y-%m-%d")
+        if user.last_login == yesterday: user.streak += 1
+        elif user.last_login != today: user.streak = 1
+        user.last_login = today
+        db.session.commit()
 
-        settings = AppSettings.query.first()
-        if not settings: settings = AppSettings(); db.session.add(settings); db.session.commit()
+    settings = AppSettings.query.first()
+    if not settings: settings = AppSettings(); db.session.add(settings); db.session.commit()
 
-        img_url = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-        return render_template('dashboard.html', user=user, settings=settings, profile_pic=img_url, daily_fact=get_smart_daily_dose())
-    except Exception as e:
-        return f"<h3>Dashboard Error: {str(e)}</h3>"
+    img_url = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+    
+    # Profile Pic Fallback
+    if user.image_file and user.image_file != 'default.png':
+        # Since Vercel doesn't store files, we rely on default or external URL
+        pass
 
-# ... (other routes can be simplified or commented out for this test) ...
+    return render_template('dashboard.html', user=user, settings=settings, profile_pic=img_url, daily_fact=get_smart_daily_dose())
+
 @app.route('/watch_ad', methods=['POST'])
-def watch_ad(): return jsonify({'msg': 'Test Mode'})
+def watch_ad():
+    try:
+        if 'user_id' not in session: return jsonify({})
+        user = User.query.get(session['user_id'])
+        settings = AppSettings.query.first()
+        if settings.ads_enabled:
+            user.coins += settings.ad_reward
+            db.session.commit()
+            return jsonify({'msg': f'Earned {settings.ad_reward} Coins!'})
+        return jsonify({'msg': 'Ads are currently disabled.'})
+    except Exception as e:
+        return jsonify({'msg': str(e)})
+
 @app.route('/submit_payment', methods=['POST'])
-def submit_payment(): return redirect(url_for('dashboard'))
+def submit_payment():
+    if 'user_id' not in session: return redirect(url_for('dashboard'))
+    user = User.query.get(session['user_id'])
+    settings = AppSettings.query.first()
+    amount = request.form.get('amount')
+    utr = request.form.get('utr')
+    
+    if PaymentRequest.query.filter_by(utr=utr).first(): return redirect(url_for('dashboard'))
+
+    req = PaymentRequest(user_id=user.id, user_name=user.name, amount=amount, utr=utr, created_at=datetime.now(IST).strftime("%Y-%m-%d %H:%M"))
+    db.session.add(req)
+    db.session.commit()
+    
+    # EMAIL ALERT
+    try:
+        target = settings.admin_email if settings.admin_email else ADMIN_EMAIL_DEFAULT
+        msg = MIMEText(f"User: {user.name}
+Amount: Rs. {amount}
+UTR: {utr}")
+        msg['Subject'] = f"💰 Payment: Rs. {amount}"
+        msg['From'] = ADMIN_EMAIL_DEFAULT
+        msg['To'] = target
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(ADMIN_EMAIL_DEFAULT, EMAIL_PASSWORD)
+        server.sendmail(ADMIN_EMAIL_DEFAULT, target, msg.as_string())
+        server.quit()
+    except: pass
+    return redirect(url_for('dashboard'))
+
 @app.route('/ask_ai', methods=['POST'])
-def ask_ai(): return jsonify({'answer': 'AI is in Test Mode.'})
-@app.route('/admin')
-def admin(): return "Admin Panel is in Test Mode."
+def ask_ai():
+    question = request.form.get('question')
+    prompt = "You are 'SSC Guru'. Be helpful and concise."
+    headers = {"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json", "HTTP-Referer": "https://sscexamhub.onrender.com"}
+    data = {"model": "meta-llama/llama-3-8b-instruct:free", "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": question}]}
+    try: return jsonify({'answer': requests.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers).json()['choices'][0]['message']['content']})
+    except: return jsonify({'answer': "AI is busy. Try again."})
+
+@app.route('/admin', methods=['GET', 'POST'])
+def admin():
+    if 'user_id' not in session: return redirect(url_for('index'))
+    user = User.query.get(session['user_id'])
+    if not user.is_admin: return "Access Denied"
+    settings = AppSettings.query.first()
+
+    if request.method == 'POST':
+        if 'update_settings' in request.form:
+            settings.upi_id = request.form.get('upi_id')
+            settings.upi_name = request.form.get('upi_name')
+            settings.admin_email = request.form.get('admin_email')
+            settings.notice_text = request.form.get('notice_text')
+            settings.ads_enabled = 'ads_enabled' in request.form
+            settings.ad_reward = int(request.form.get('ad_reward'))
+            db.session.commit()
+        elif 'paper_title' in request.form:
+            # Note: File saving on Vercel is temporary.
+            db.session.add(Paper(title=request.form['paper_title'], category="SSC", price=int(request.form['price']), filename="demo.pdf"))
+            db.session.commit()
+        elif 'fc_q' in request.form:
+            db.session.add(Flashcard(question=request.form['fc_q'], answer=request.form['fc_a'], category="General"))
+            db.session.commit()
+    
+    pending = PaymentRequest.query.filter_by(status='pending').all()
+    return render_template('admin.html', payments=pending, settings=settings)
+
+@app.route('/approve_payment/<int:req_id>')
+def approve_payment(req_id):
+    if 'user_id' not in session: return redirect(url_for('index'))
+    user = User.query.get(session['user_id'])
+    if not user.is_admin: return "Access Denied"
+    req = PaymentRequest.query.get(req_id)
+    if req.status == 'pending':
+        req.status = "approved"
+        buyer = User.query.get(req.user_id)
+        buyer.coins += int(req.amount) * 10 
+        db.session.commit()
+    return redirect(url_for('admin'))
+
+@app.route('/reject_payment/<int:req_id>')
+def reject_payment(req_id):
+    if 'user_id' not in session: return redirect(url_for('index'))
+    user = User.query.get(session['user_id'])
+    if not user.is_admin: return "Access Denied"
+    req = PaymentRequest.query.get(req_id)
+    req.status = "rejected"
+    db.session.commit()
+    return redirect(url_for('admin'))
+
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    if 'user_id' not in session: return redirect(url_for('index'))
+    user = User.query.get(session['user_id'])
+    if request.method == 'POST':
+        user.name = request.form.get('name')
+        user.dob = request.form.get('dob')
+        user.gender = request.form.get('gender')
+        # Profile pic upload logic omitted for Vercel simplicity
+        db.session.commit()
+        return redirect(url_for('profile'))
+    img_url = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+    return render_template('profile.html', user=user, badges=json.loads(user.badges), profile_pic=img_url)
+
+@app.route('/library')
+def library():
+    if 'user_id' not in session: return redirect(url_for('index'))
+    user = User.query.get(session['user_id'])
+    return render_template('library.html', user=user, papers=Paper.query.all(), owned_ids=json.loads(user.papers_owned))
+
+@app.route('/buy_paper/<int:paper_id>')
+def buy_paper(paper_id):
+    if 'user_id' not in session: return redirect(url_for('index'))
+    user = User.query.get(session['user_id'])
+    paper = Paper.query.get(paper_id)
+    owned = json.loads(user.papers_owned)
+    if paper_id not in owned and user.coins >= paper.price:
+        user.coins -= paper.price
+        owned.append(paper_id)
+        user.papers_owned = json.dumps(owned)
+        db.session.commit()
+    return redirect(url_for('library'))
+
+@app.route('/flashcards')
+def flashcards():
+    if 'user_id' not in session: return redirect(url_for('index'))
+    return render_template('flashcards.html', cards=Flashcard.query.all())
+
 @app.route('/logout')
-def logout(): session.pop('user_id', None); return redirect(url_for('index'))
+def logout():
+    session.pop('user_id', None)
+    return redirect(url_for('index'))
 
-# ERROR HANDLER
-@app.errorhandler(500)
-def internal_error(error):
-    logger.error(f"Server Error: {error}")
-    return f"<h1>500 Error:</h1><p>{str(error)}</p>", 500
-
-# DATABASE CREATION
+# 🔥 SAFE DB INITIALIZATION 🔥
 with app.app_context():
     try:
         db.create_all()
-        logger.info("✅ Database tables created in memory.")
+        logger.info("✅ Database Connected & Tables Ready")
     except Exception as e:
-        logger.error(f"⚠️ DB Creation Error: {e}")
+        logger.error(f"⚠️ DB Init Error: {e}")
 
 if __name__ == '__main__':
     app.run()
