@@ -1,53 +1,31 @@
 import os
-import logging
 from datetime import datetime, timedelta
 import pytz
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
-from werkzeug.utils import secure_filename
 import smtplib
 from email.mime.text import MIMEText
 import json
-import random
 import requests
-
-# --- LOGGING SETUP ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
 # --- CONFIGURATION ---
-app.config['SECRET_KEY'] = 'ssc_hub_production_v5'
+app.config['SECRET_KEY'] = 'ssc_hub_pythonanywhere_secret_key'
 
-# 🔥 DATABASE CONNECTION 🔥
-# This ensures we use Vercel's real database, NOT memory.
-raw_db_url = os.environ.get('POSTGRES_URL')
-
-if raw_db_url:
-    if raw_db_url.startswith("postgres://"):
-        app.config['SQLALCHEMY_DATABASE_URI'] = raw_db_url.replace("postgres://", "postgresql://", 1)
-    else:
-        app.config['SQLALCHEMY_DATABASE_URI'] = raw_db_url
-else:
-    # If DB is missing, we log an error but try to run (will fail saving data)
-    logger.error("⚠️ CRITICAL: POSTGRES_URL not found!")
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-
+# 🔥 SQLITE DATABASE (Best for PythonAnywhere) 🔥
+basedir = os.path.abspath(os.path.dirname(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'ssc_hub.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = '/tmp' 
-app.config['PROFILE_PICS'] = 'static/profile_pics' 
-app.config['SESSION_COOKIE_SECURE'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+
+db = SQLAlchemy(app)
 
 # --- CREDENTIALS ---
 ADMIN_EMAIL_DEFAULT = "nitinkumawat985@gmail.com"
-EMAIL_PASSWORD = "cuzr fhda ulkq swpc"
+EMAIL_PASSWORD = "cuzr fhda ulkq swpc"  # App Password
 AI_API_KEY = "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"
 IST = pytz.timezone('Asia/Kolkata')
-
-db = SQLAlchemy(app)
 
 # --- MODELS ---
 class User(db.Model):
@@ -59,8 +37,8 @@ class User(db.Model):
     is_admin = db.Column(db.Boolean, default=False)
     streak = db.Column(db.Integer, default=0)
     last_login = db.Column(db.String(20), nullable=True)
-    badges = db.Column(db.String(500), default="[]")
-    papers_owned = db.Column(db.String(1000), default="[]")
+    badges = db.Column(db.String(500), default="[]") # JSON string
+    papers_owned = db.Column(db.String(1000), default="[]") # JSON string
     dob = db.Column(db.String(20), nullable=True)
     gender = db.Column(db.String(10), nullable=True)
     image_file = db.Column(db.String(100), default='default.png')
@@ -98,28 +76,23 @@ class Flashcard(db.Model):
     answer = db.Column(db.String(200))
     category = db.Column(db.String(50))
 
-# --- HELPER: REAL DAILY DOSE (AI) ---
+# --- HELPER: AI DAILY DOSE ---
 def get_smart_daily_dose():
     try:
-        # Safely get settings
         try:
             settings = AppSettings.query.first()
-            if not settings: 
-                settings = AppSettings()
-                db.session.add(settings)
-                db.session.commit()
-        except:
-            return "<b>Welcome!</b> Loading daily facts..."
+            if not settings: settings = AppSettings(); db.session.add(settings); db.session.commit()
+        except: return "<b>Welcome!</b> Loading..."
 
         today_str = datetime.now(IST).strftime("%Y-%m-%d")
         if settings.today_date_str == today_str and settings.today_dose_content:
             return settings.today_dose_content
 
-        # Call AI
         prompt = f"Generate a unique 'Daily Dose' for SSC CGL Aspirants for {today_str}. 3 points: English Vocab, Math Trick, GK Fact. Use HTML <b> tags."
         headers = {"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json", "HTTP-Referer": "https://sscexamhub.onrender.com"}
         data = {"model": "meta-llama/llama-3-8b-instruct:free", "messages": [{"role": "user", "content": prompt}]}
         
+        # Timeout set to 10s to avoid hanging
         resp = requests.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers, timeout=10)
         
         if resp.status_code == 200:
@@ -128,10 +101,9 @@ def get_smart_daily_dose():
             settings.today_dose_content = new_content
             db.session.commit()
             return new_content
-        return "<b>Tip:</b> Revision is the key to success."
-    except Exception as e:
-        logger.error(f"Daily Dose Error: {e}")
-        return "<b>Tip:</b> Keep working hard!"
+        return "<b>Tip:</b> Keep practicing."
+    except:
+        return "<b>Tip:</b> Consistency is key."
 
 # --- ROUTES ---
 @app.route('/')
@@ -146,17 +118,18 @@ def firebase_login():
         uid = data.get('uid')
         user = User.query.get(uid)
         if not user:
+            # Create new user
             new_user = User(id=uid, name=data.get('name', 'Student'), email=data.get('email'), phone=data.get('phone', ''))
-            # 🔥 AUTO ADMIN FOR YOUR EMAIL 🔥
+            # Auto-Admin check
             if data.get('email') == ADMIN_EMAIL_DEFAULT: 
                 new_user.is_admin = True
             db.session.add(new_user)
             db.session.commit()
+        
         session.permanent = True
         session['user_id'] = uid
         return jsonify({'status': 'success'})
     except Exception as e:
-        logger.error(f"Login Error: {e}")
         return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/dashboard')
@@ -178,12 +151,6 @@ def dashboard():
     if not settings: settings = AppSettings(); db.session.add(settings); db.session.commit()
 
     img_url = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-    
-    # Profile Pic Fallback
-    if user.image_file and user.image_file != 'default.png':
-        # Since Vercel doesn't store files, we rely on default or external URL
-        pass
-
     return render_template('dashboard.html', user=user, settings=settings, profile_pic=img_url, daily_fact=get_smart_daily_dose())
 
 @app.route('/watch_ad', methods=['POST'])
@@ -196,7 +163,7 @@ def watch_ad():
             user.coins += settings.ad_reward
             db.session.commit()
             return jsonify({'msg': f'Earned {settings.ad_reward} Coins!'})
-        return jsonify({'msg': 'Ads are currently disabled.'})
+        return jsonify({'msg': 'Ads disabled.'})
     except Exception as e:
         return jsonify({'msg': str(e)})
 
@@ -214,7 +181,7 @@ def submit_payment():
     db.session.add(req)
     db.session.commit()
     
-    # EMAIL ALERT
+    # Send Email Alert
     try:
         target = settings.admin_email if settings.admin_email else ADMIN_EMAIL_DEFAULT
         msg = MIMEText(f"User: {user.name}
@@ -234,11 +201,11 @@ UTR: {utr}")
 @app.route('/ask_ai', methods=['POST'])
 def ask_ai():
     question = request.form.get('question')
-    prompt = "You are 'SSC Guru'. Be helpful and concise."
-    headers = {"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json", "HTTP-Referer": "https://sscexamhub.onrender.com"}
+    prompt = "You are 'SSC Guru'. Concise. Math: Tricks. GK: Mnemonics."
+    headers = {"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json"}
     data = {"model": "meta-llama/llama-3-8b-instruct:free", "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": question}]}
     try: return jsonify({'answer': requests.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers).json()['choices'][0]['message']['content']})
-    except: return jsonify({'answer': "AI is busy. Try again."})
+    except: return jsonify({'answer': "AI busy. Try again."})
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
@@ -257,7 +224,6 @@ def admin():
             settings.ad_reward = int(request.form.get('ad_reward'))
             db.session.commit()
         elif 'paper_title' in request.form:
-            # Note: File saving on Vercel is temporary.
             db.session.add(Paper(title=request.form['paper_title'], category="SSC", price=int(request.form['price']), filename="demo.pdf"))
             db.session.commit()
         elif 'fc_q' in request.form:
@@ -298,7 +264,6 @@ def profile():
         user.name = request.form.get('name')
         user.dob = request.form.get('dob')
         user.gender = request.form.get('gender')
-        # Profile pic upload logic omitted for Vercel simplicity
         db.session.commit()
         return redirect(url_for('profile'))
     img_url = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
@@ -333,13 +298,9 @@ def logout():
     session.pop('user_id', None)
     return redirect(url_for('index'))
 
-# 🔥 SAFE DB INITIALIZATION 🔥
+# 🔥 DB INIT ON STARTUP 🔥
 with app.app_context():
-    try:
-        db.create_all()
-        logger.info("✅ Database Connected & Tables Ready")
-    except Exception as e:
-        logger.error(f"⚠️ DB Init Error: {e}")
+    db.create_all()
 
 if __name__ == '__main__':
     app.run()
